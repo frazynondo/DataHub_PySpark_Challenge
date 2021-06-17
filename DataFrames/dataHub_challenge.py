@@ -16,8 +16,36 @@ except ImportError as e:
     print("Something wrong with the import {}".format(e))
 
 
+"""
+__CREATE A BUCKET command: gsutil mb -b on -l us-east1 gs://my-awesomefrazy-bucket/
+__gcloud init and log into the project of choice
+__STEP 1 is to copy all our Data files from e.g local machine to our case to Google Cloud Storage Bucket
+gsutil cp DataHomework/product.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/location.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_1.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_2.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_3.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_4.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_5.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_6.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_7.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_8.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_9.csv gs://my-awesomefrazy-bucket
+gsutil cp DataHomework/trans_fact_10.csv gs://my-awesomefrazy-bucket
+
+
+*** Check if the files are succesfully copied by looking at the content of gs://my-awesomefrazy-bucket:
+gsutil ls gs://my-awesomefrazy-bucket
+
+*** To avoid incurring charges after we must delete the bucket when done:
+gsutil rm -r gs://my-awesomefrazy-bucket
+
+Further documentation on giving someone access/permission to the bucket [1]
+[1] https://cloud.google.com/storage/docs/quickstart-gsutil#create
+"""
 # This is used to get trans_fact files ready but with a little modification it can be generic to accommodate many
 # different stores with different names that doesnt qualify for a wild card path call
+
 
 class Job_func(object):
     def __init__(self):
@@ -49,11 +77,16 @@ class Job_func(object):
         # P = ExtractFromGCS()
         # QueResult = P.get_GCS_Data()
         # Converts the string to Pandas DF
+        # Note: pandas.read_csv Reads a comma-separated values (csv) file into DataFrame
         pads = pd.read_csv(io.BytesIO(QueRes[0]), encoding="utf-8", sep=",")
-        # print(pads.head())
-        # Converts Pandas DF to Spark DataFrame - There should be a
-        # straight way to do this without using Pandas DF
-        result1 = spark.createDataFrame(pads, schema=Job_func.Schemas(0))
+        # print(pads.head()) Converts Pandas DF to Spark DataFrame - There is another easier way to extract data from
+        # should cloud storage given the proper authentication and installments - If you are not running this locally
+        # use this approach instead --> https://cloud.google.com/dataproc/docs/tutorials/bigquery-connector-spark
+        # -example#pyspark : The doc is here -> straight way to do this without using Pandas DF. result1 =
+        # spark.createDataFrame(pads, schema=Job_func.Schemas(0)) part = "gs://my-awesomefrazy-bucket/trans_fact_1.csv"
+
+        # Note: The createDataFrame method Creates a DataFrame from an RDD, a list or a pandas DataFrame
+        result1 = spark.createDataFrame(io.BytesIO(QueRes[0], schema=Job_func.Schemas(0)))
         result1 = Job_func.combine_DF(spark, result1, 4, 10, QueRes)
         return result1
 
@@ -71,6 +104,7 @@ class Job_func(object):
                 temp = Job_func.changeSchema(sparks, i, QueRes)
             if i == 4 or i == 6 or i == 8:
                 uds = udf(lambda x: datetime.strptime(x, '%m/%d/%Y'), DateType())
+                # if when to date toDate, date format - Spark
                 temp = temp.withColumn("trans_dt", uds(col("trans_dt")))
             result = result.unionByName(temp)
             print(result.count(), " Counted")
@@ -117,8 +151,8 @@ Extract the data from GCS Bucket
 
 class ExtractFromGCS(object):
     def __init__(self):
-        self.storage_client = storage.Client.from_service_account_json("Key/GCP_Service.json")
-        self.BUCKET_NAME = "my-gcs-bucket"
+        self.storage_client = storage.Client.from_service_account_json("Key.json")
+        self.BUCKET_NAME = "my-awesomefrazy-bucket"
         self.bucket = self.storage_client.get_bucket(self.BUCKET_NAME)
         self.data = list(self.bucket.list_blobs(prefix=""))
 
@@ -223,21 +257,21 @@ if __name__ == "__main__":
     Loc = Loc.drop("postal_code").drop("banner").drop("region").drop("store_location_key")
     Loc.show(10)
 
-    #
-    # # Product CSV
+    # Product CSV
     print("PRODUCT RESULTS")
     Prod = ExtractFromGCS.String_To_Pd_to_dataFrame(1, QueResult)
     Prod = Prod.drop("item_description")
     Prod.printSchema()
     Prod.show(10)
 
-    # # Join Location with Combined Trans_fact CSV Data
+    # Join Location with Combined Trans_fact CSV Data
     Temps = Job_func.joinDataSets(df, Loc, "store_location_key", "store_num")
     Temps = Temps.withColumn("sales", Temps["sales"].cast(DoubleType())) \
         .withColumn("COLLECT_KEY", Temps["COLLECT_KEY"].cast(LongType()))
 
     # replace all null values with zero in sales
     Temps = Temps.na.fill(value=0, subset=["sales"])
+    Temps = Temps.na.fill(value=0, subset=["units"])
     Temps = Temps.orderBy("trans_dt")
     Temps = Temps.drop("city")
     Temps.show(10)
@@ -252,7 +286,7 @@ if __name__ == "__main__":
     # both_sales.orderBy("province").show(10)
 
     # # Top store vs average store of the Province
-    Performance = Temps.groupBy("province").agg(
+    Performance = Temps.groupBy("province", "store_location_key").agg(
         sum("sales").alias("Total_sales"),
         max("sales").alias("Province_Top_Store_sales"),
         avg("sales").alias("Average_Store_Sales"),
