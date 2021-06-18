@@ -81,7 +81,9 @@ class Job_func(object):
         pads = pd.read_csv(io.BytesIO(QueRes[0]), encoding="utf-8", sep=",")
         # print(pads.head()) Converts Pandas DF to Spark DataFrame - There is another easier way to extract data from
         # should cloud storage given the proper authentication and installments - If you are not running this locally
-        # use this approach instead --> https://cloud.google.com/dataproc/docs/tutorials/bigquery-connector-spark
+        # use this approach instead -->
+        # 1. https://cloud.google.com/docs/authentication/getting-started
+        # 2. https://cloud.google.com/dataproc/docs/tutorials/bigquery-connector-spark
         # -example#pyspark : The doc is here -> straight way to do this without using Pandas DF. result1 =
         # spark.createDataFrame(pads, schema=Job_func.Schemas(0)) part = "gs://my-awesomefrazy-bucket/trans_fact_1.csv"
 
